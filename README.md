@@ -1,1 +1,1 @@
-# see-the-math
+# visual-algorithms
