@@ -1,6 +1,6 @@
 # visual-algorithms
 
-Simple tree generator with properties that can be played around with.
+Simple tree generator with variable properties.
 Made with Processing 3
 
 On Windows navigate to Tree_Generator_Windows/ and open the .exe file
