@@ -24,17 +24,14 @@ namespace Chess_AI
         char PLAYER = 'w';
         bool[,] FREE_TILES;
         bool IN_CHECK = false;
+        
         public display()
         {
             InitializeComponent();
             boardGraphics.Invalidate();
         }
 
-        /// <summary>
-        /// Draws board and pieces.
-        /// </summary>
-        /// <param name="sender"></param>
-        /// <param name="e"></param>
+        //draws board and pieces
         private void boardGraphics_Paint(object sender, PaintEventArgs e)
         {
             int tileWidth = boardGraphics.Width / 8;
@@ -72,10 +69,11 @@ namespace Chess_AI
             if (pieceInHand)
             {
                 var pos = boardGraphics.PointToClient(Cursor.Position);
-                graphics.DrawImage(Piece.GetIcon(tiles[SELECTED_PIECE_X, SELECTED_PIECE_Y], tileWidth, tileHeight), pos.X - tileWidth / 2, pos.Y - tileHeight / 2);
+                graphics.DrawImage(Piece.GetIcon(tiles[SELECTED_PIECE_X, SELECTED_PIECE_Y], tileWidth, tileHeight), pos.X - tileWidth /                 2, pos.Y - tileHeight / 2);
             }
         }
 
+        //shows free tiles for piece that mouse is over
         private void boardGraphics_MouseMove(object sender, MouseEventArgs e)
         {
             byte x = (byte)(e.X / (boardGraphics.Width / 8));
@@ -119,6 +117,7 @@ namespace Chess_AI
 
         private bool mouseDown = false;
 
+        //selects piece
         private void boardGraphics_MouseDown(object sender, MouseEventArgs e)
         {
             byte x = (byte)(e.X / (boardGraphics.Width / 8));
@@ -134,6 +133,7 @@ namespace Chess_AI
             mouseDown = true;
         }
 
+        //moves selected piece
         private void boardGraphics_MouseUp(object sender, MouseEventArgs e)
         {
             byte x = (byte)(e.X / (boardGraphics.Width / 8));
@@ -190,7 +190,7 @@ namespace Chess_AI
 
 
 
-
+//methods for board related actions
 public static class Board
     {
         static float[,] pawnVal = { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
@@ -246,6 +246,7 @@ public static class Board
                                     { -1.0f, -2.0f, -2.0f, -2.0f, -2.0f, -2.0f, -2.0f, -1.0f},
                                     { 2.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 2.0f },
                                     { 2.0f, 3.0f, 1.0f, 0.0f, 0.0f, 1.0f, 3.0f, 2.0f} };
+                                    
         public static string[,] CreateNewBoard()
         {
             string[,] tiles = new string[8, 8];
@@ -298,7 +299,8 @@ public static class Board
                 }
             return null;
         }
-
+        
+        //gets points of specified player
         public static float GetPoints(string[,] tiles, char colour)
         {
             float points = 0;
@@ -390,9 +392,11 @@ public static class Board
 
 
 
-
+//methods for piece related actions
 public static class Piece
     {
+        //Gets free tiles of a specified piece. It then checks whether the player's king
+        //is under attack for each free tile. If so, it removes the free tile.
         public static bool[,] GetFreeTiles(string[,] tiles, byte curX, byte curY)
         {
             string piece = tiles[curX, curY];
@@ -496,6 +500,7 @@ public static class Piece
 
             //En passant not implemented.
         }
+        
         private static void CheckKnightMoves(string[,] tiles, bool[,] freeTiles, char colour, byte curX, byte curY)
         {
             byte newX;
@@ -571,13 +576,14 @@ public static class Piece
                 }
             }
         }
+        
         private static void CheckBishopMoves(string[,] tiles, bool[,] freeTiles, char colour, byte curX, byte curY)
         {
             byte newX;
             byte newY;
             for (byte n = 0; n < 4; n++)
             {
-                byte iterations = (byte)(n == 0 ? Math.Min(curX, curY) : n == 1 ? Math.Min(curX, 8 - curY) : n == 2 ? Math.Min(8 - curX, curY) : Math.Min(8 - curX, 8 - curY));
+                byte iterations = (byte)(n == 0 ? Math.Min(curX, curY) : n == 1 ? Math.Min(curX, 8 - curY) : n == 2 ? Math.Min(8 - curX,                                          curY) : Math.Min(8 - curX, 8 - curY));
                 for (byte i = 1; i <= iterations; i++)
                 {
                     newX = (byte)(n == 0 || n == 1 ? curX - i : curX + i);
@@ -592,6 +598,7 @@ public static class Piece
                 }
             }
         }
+        
         private static void CheckRookMoves(string[,] tiles, bool[,] freeTiles, char colour, byte curX, byte curY)
         {
             byte newX;
@@ -631,9 +638,9 @@ public static class Piece
             {
                 string leftRook = tiles[0, curY];
                 string rightRook = tiles[7, curY];
-                if (leftRook != null && leftRook[0] == 'r' && leftRook[2] == '1' && tiles[curX - 1, curY] == null && tiles[curX - 2, curY] == null && tiles[curX - 3, curY] == null)
+                if (leftRook != null && leftRook[0] == 'r' && leftRook[2] == '1' && tiles[curX - 1, curY] == null && tiles[curX - 2,                         curY] == null && tiles[curX - 3, curY] == null)
                     freeTiles[curX - 2, curY] = true;
-                if (rightRook != null && rightRook[0] == 'r' && rightRook[2] == '1' && tiles[curX + 1, curY] == null && tiles[curX + 2, curY] == null)
+                if (rightRook != null && rightRook[0] == 'r' && rightRook[2] == '1' && tiles[curX + 1, curY] == null && tiles[curX + 2,                     curY] == null)
                     freeTiles[curX + 2, curY] = true;
             }
         }
@@ -677,8 +684,8 @@ public static class Piece
 
 
 
-
-  struct Node
+    //node for minimax algorithm
+    struct Node
     {
         public string[,] tiles;
         public byte[] move;
@@ -690,6 +697,8 @@ public static class Piece
             points = 0;
         }
     }
+    
+    //minimax method for specified depth
     public static class AI
     {
         public static byte[] GetMove(string[,] tiles, char aiColour, byte depth)
@@ -727,15 +736,8 @@ public static class Piece
             points[index] = SetPoints(node, aiColour, 1, depth);
         }
 
-        /// <summary>
-        /// Recursive minimax algorithm that calculates points of all possible moves
-        /// and gets best case scenario. Can be made more efficient with alpha-beta pruning.
-        /// </summary>
-        /// <param name="node"></param>
-        /// <param name="aiColour"></param>
-        /// <param name="curDepth"></param>
-        /// <param name="depth"></param>
-        /// <returns></returns>
+        // Recursive minimax algorithm that calculates points of all possible moves
+        // and gets best case scenario. Can be made more efficient with alpha-beta pruning.
         private static float SetPoints(Node node, char aiColour, byte curDepth, byte depth)
         {
             char colour = curDepth % 2 == 1 ? aiColour : Board.SwitchColour(aiColour);
@@ -799,6 +801,7 @@ public static class Piece
                 return new List<Node>() { node };
             return childNodes;
         }
+        
         private static List<Node> GetBestNodes(List<Node> nodes)
         {
             List<Node> bestNodes = new List<Node>();
