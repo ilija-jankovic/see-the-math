@@ -1,3 +1,6 @@
+//3D projection console application written in C++ in Visual Studio 2019
+// by Ilija Jankovic
+
 #include <iostream>
 #include <windows.h>
 #include <string>
