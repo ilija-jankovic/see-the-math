@@ -1,0 +1,838 @@
+//Chess AI written in C# in Visual Studio 2019
+//by Ilija Jankovic
+
+
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+
+namespace Chess_AI
+{
+    public partial class display : Form
+    {
+        string[,] tiles = Board.CreateNewBoard();
+
+        byte DEPTH = 2;
+        sbyte SELECTED_PIECE_X = -1;
+        sbyte SELECTED_PIECE_Y = -1;
+        char PLAYER = 'w';
+        bool[,] FREE_TILES;
+        bool IN_CHECK = false;
+        public display()
+        {
+            InitializeComponent();
+            boardGraphics.Invalidate();
+        }
+
+        /// <summary>
+        /// Draws board and pieces.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void boardGraphics_Paint(object sender, PaintEventArgs e)
+        {
+            int tileWidth = boardGraphics.Width / 8;
+            int tileHeight = boardGraphics.Height / 8;
+            Graphics graphics = e.Graphics;
+            bool pieceInHand = false;
+            for (byte x = 0; x < 8; x++)
+                for(byte y = 0; y < 8; y++)
+                {
+                    Color tileColour = (x + y) % 2 == 0 ? Color.SandyBrown : Color.SaddleBrown;
+                    if (x == SELECTED_PIECE_X && y == SELECTED_PIECE_Y)
+                        tileColour = Color.DarkOrange;
+                    else if (FREE_TILES != null && FREE_TILES[x, y] == true)
+                        tileColour = Color.Green;
+
+                    if (IN_CHECK)
+                    {
+                        byte[] kingPos = Board.GetKing(tiles, PLAYER);
+                        if (x == kingPos[0] && y == kingPos[1])
+                            tileColour = Color.Red;
+                    }
+
+                    int xPos = x * tileWidth;
+                    int yPos = y * tileHeight;
+
+                    graphics.FillRectangle(new SolidBrush(tileColour), xPos, yPos, tileWidth, tileHeight);
+
+                    Image icon = Piece.GetIcon(tiles[x, y], tileWidth, tileHeight);
+                    if (icon != null)
+                        if (!mouseDown || !(x == SELECTED_PIECE_X && y == SELECTED_PIECE_Y))
+                            graphics.DrawImage(icon, xPos, yPos);
+                        else
+                            pieceInHand = true;
+                }
+            if (pieceInHand)
+            {
+                var pos = boardGraphics.PointToClient(Cursor.Position);
+                graphics.DrawImage(Piece.GetIcon(tiles[SELECTED_PIECE_X, SELECTED_PIECE_Y], tileWidth, tileHeight), pos.X - tileWidth / 2, pos.Y - tileHeight / 2);
+            }
+        }
+
+        private void boardGraphics_MouseMove(object sender, MouseEventArgs e)
+        {
+            byte x = (byte)(e.X / (boardGraphics.Width / 8));
+            byte y = (byte)(e.Y / (boardGraphics.Height / 8));
+            if (x < 8 && y < 8)
+            {
+                string piece = tiles[x, y];
+                if (SELECTED_PIECE_X == -1 && SELECTED_PIECE_Y == -1)
+                    if (piece != null && piece[1] == PLAYER)
+                        FREE_TILES = Piece.GetFreeTiles(tiles, x, y);
+                    else
+                        FREE_TILES = null;
+            }
+            else if(SELECTED_PIECE_X == -1 && SELECTED_PIECE_Y == -1)
+                FREE_TILES = null;
+            boardGraphics.Invalidate();
+        }
+
+        private void boardGraphics_MouseClick(object sender, MouseEventArgs e)
+        { 
+
+        }
+
+        private void switchPlayer_Click(object sender, EventArgs e)
+        {
+            Board.ChangePlayer(ref PLAYER);
+        }
+
+        private void buttonReset_Click(object sender, EventArgs e)
+        {
+            tiles = Board.CreateNewBoard();
+            PLAYER = 'w';
+            FREE_TILES = null;
+            boardGraphics.Invalidate();
+        }
+
+        private void boardGraphics_MouseHover(object sender, EventArgs e)
+        {
+
+        }
+
+        private bool mouseDown = false;
+
+        private void boardGraphics_MouseDown(object sender, MouseEventArgs e)
+        {
+            byte x = (byte)(e.X / (boardGraphics.Width / 8));
+            byte y = (byte)(e.Y / (boardGraphics.Height / 8));
+            string piece = tiles[x, y];
+            if (piece != null && piece[1] == PLAYER && !(SELECTED_PIECE_X == x && SELECTED_PIECE_Y == y))
+            {
+                SELECTED_PIECE_X = (sbyte)x;
+                SELECTED_PIECE_Y = (sbyte)y;
+                FREE_TILES = Piece.GetFreeTiles(tiles, x, y);
+            }
+
+            mouseDown = true;
+        }
+
+        private void boardGraphics_MouseUp(object sender, MouseEventArgs e)
+        {
+            byte x = (byte)(e.X / (boardGraphics.Width / 8));
+            byte y = (byte)(e.Y / (boardGraphics.Height / 8));
+            if (SELECTED_PIECE_X != -1 && SELECTED_PIECE_Y != -1 && FREE_TILES[x,y] != false)
+            {
+                byte selectedXByte = (byte)SELECTED_PIECE_X;
+                byte selectedYByte = (byte)SELECTED_PIECE_Y;
+                if (FREE_TILES[x, y] == true)
+                {
+                    Board.Move(ref tiles, selectedXByte, selectedYByte, x, y);
+                    Board.ChangePlayer(ref PLAYER);
+                    IN_CHECK = Piece.InCheck(tiles, PLAYER);
+                    if (PLAYER == 'b')
+                    {
+                        byte[] move = AI.GetMove(tiles, PLAYER, DEPTH);
+                        if (move != null)
+                        {
+                            Board.Move(ref tiles, move[0], move[1], move[2], move[3]);
+                            Board.ChangePlayer(ref PLAYER);
+                            IN_CHECK = Piece.InCheck(tiles, PLAYER);
+                        }
+                    }
+                }
+                FREE_TILES = null;
+            }
+            SELECTED_PIECE_X = -1;
+            SELECTED_PIECE_Y = -1;
+            mouseDown = false;
+        }
+
+        private void radioButtonEasy_CheckedChanged(object sender, EventArgs e)
+        {
+            if (radioButtonEasy.Checked)
+                DEPTH = 2;
+        }
+
+        private void radioButtonMedium_CheckedChanged(object sender, EventArgs e)
+        {
+            if (radioButtonMedium.Checked)
+                DEPTH = 3;
+        }
+
+        private void radioButtonHard_CheckedChanged(object sender, EventArgs e)
+        {
+            if (radioButtonHard.Checked)
+                DEPTH = 4;
+        }
+    }
+
+
+
+
+
+
+
+
+public static class Board
+    {
+        static float[,] pawnVal = { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f},
+                                    { 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f},
+                                    { 1.0f, 1.0f, 2.0f, 3.0f, 3.0f, 2.0f, 1.0f, 1.0f},
+                                    { 0.5f, 0.5f, 1.0f, 2.5f, 2.5f, 1.0f, 0.5f, 0.5f},
+                                    { 0.0f, 0.0f, 0.0f, 2.0f, 2.0f, 0.0f, 0.0f, 0.0f},
+                                    { 0.5f, -0.5f, -1.0f, 0.0f, 0.0f, -1.0f, -0.5f, 0.5f},
+                                    { 0.5f, 1.0f, 1.0f, -2.0f, -2.0f, 1.0f, 1.0f, 0.5f},
+                                    { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f} };
+
+        static float[,] knightVal = { { -5.0f, -4.0f, -3.0f, -3.0f, -3.0f, -3.0f, -4.0f, -5.0f },
+                                      { -4.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f, -4.0f },
+                                      { -3.0f, 0.0f, 1.0f, 1.5f, 1.5f, 1.0f, 0.0f, -3.0f },
+                                      { -3.0f, 0.5f, 1.5f, 2.0f, 2.0f, 1.5f, 0.5f, -3.0f },
+                                      { -3.0f, 0.5f, 1.5f, 2.0f, 2.0f, 1.5f, 0.5f, -3.0f },
+                                      { -3.0f, 0.0f, 1.0f, 1.5f, 1.5f, 1.0f, 0.0f, -3.0f },
+                                      { -4.0f, -2.0f, 0.0f, 0.0f, 0.0f, 0.0f, -2.0f, -4.0f },
+                                      { -5.0f, -4.0f, -3.0f, -3.0f, -3.0f, -3.0f, -4.0f, -5.0f } };
+
+        static float[,] bishopVal = { { -2.0f, -4.0f, -3.0f, -3.0f, -3.0f, -3.0f, -4.0f, -5.0f },
+                                      { -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f },
+                                      { -1.0f, 0.0f, 0.5f, 1.0f, 1.0f, 0.5f, 0.05f, -1.0f },
+                                      { -1.0f, 0.5f, 0.5f, 1.0f, 1.0f, 0.5f, 0.5f, -1.0f },
+                                      { -1.0f, 0.5f, 0.5f, 1.0f, 1.0f, 0.5f, 0.5f, -1.0f },
+                                      { -1.0f, 0.0f, 0.5f, 1.0f, 1.0f, 0.5f, 0.05f, -1.0f },
+                                      { -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f },
+                                      { -2.0f, -4.0f, -3.0f, -3.0f, -3.0f, -3.0f, -4.0f, -5.0f } };
+
+        static float[,] rookVal = { { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+                                    { 0.5f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.5f},
+                                    { -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -0.5f},
+                                    { -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -0.5f},
+                                    { -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -0.5f},
+                                    { -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -0.5f},
+                                    { -0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -0.5f},
+                                    { 0.0f, 0.0f, 0.0f, 0.5f, 0.5f, 0.0f, 0.0f, 0.0f } };
+
+        static float[,] queenVal = { { -2.0f, -1.0f, -1.0f, -0.5f, -0.5f, -1.0f, -1.0f, -2.0f},
+                                     { -1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f },
+                                     { -1.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.0f, -1.0f },
+                                     { -0.5f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.0f, -0.5f },
+                                     { 0.0f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.0f, -0.5f },
+                                     { -1.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.0f, -1.0f },
+                                     { -1.0f, 0.0f, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f },
+                                     { -2.0f, -1.0f, -1.0f, -0.5f, -0.5f, -1.0f, -1.0f, -2.0f} };
+
+        static float[,] kingVal = { { -3.0f, -4.0f, -4.0f, -5.0f, -5.0f, -4.0f, -4.0f, -3.0f},
+                                    { -3.0f, -4.0f, -4.0f, -5.0f, -5.0f, -4.0f, -4.0f, -3.0f},
+                                    { -3.0f, -4.0f, -4.0f, -5.0f, -5.0f, -4.0f, -4.0f, -3.0f},
+                                    { -3.0f, -4.0f, -4.0f, -5.0f, -5.0f, -4.0f, -4.0f, -3.0f},
+                                    { -2.0f, -3.0f, -3.0f, -4.0f, -4.0f, -3.0f, -3.0f, -2.0f},
+                                    { -1.0f, -2.0f, -2.0f, -2.0f, -2.0f, -2.0f, -2.0f, -1.0f},
+                                    { 2.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f, 2.0f, 2.0f },
+                                    { 2.0f, 3.0f, 1.0f, 0.0f, 0.0f, 1.0f, 3.0f, 2.0f} };
+        public static string[,] CreateNewBoard()
+        {
+            string[,] tiles = new string[8, 8];
+            for(byte x = 0; x < 8; x++)
+            {
+                tiles[x, 1] = "pb";
+                tiles[x, 6] = "pw";
+            }
+            for(byte y = 0; y < 8; y+=7)
+            {
+                char pieceColour = y == 0 ? 'b' : 'w';
+                tiles[0, y] = "r" + pieceColour + "1";
+                tiles[1, y] = "n" + pieceColour;
+                tiles[2, y] = "b" + pieceColour;
+                tiles[3, y] = "q" + pieceColour;
+                tiles[4, y] = "k" + pieceColour + "1n";
+                tiles[5, y] = "b" + pieceColour;
+                tiles[6, y] = "n" + pieceColour;
+                tiles[7, y] = "r" + pieceColour + "1";
+            }
+            return tiles;
+        }
+
+        public static void ChangePlayer(ref char player)
+        {
+            player = player == 'w' ? 'b' : 'w';
+        }
+
+        public static char SwitchColour(char player)
+        {
+            return player == 'w' ? 'b' : 'w';
+        }
+
+        public static string[,] CloneTiles(string[,] tiles)
+        {
+            string[,] newTiles = new string[8, 8];
+            for (byte x = 0; x < 8; x++)
+                for (byte y = 0; y < 8; y++)
+                    newTiles[x, y] = tiles[x, y];
+            return newTiles;
+        }
+        public static byte[] GetKing(string[,] tiles, char colour)
+        {
+            for (byte x = 0; x < 8; x++)
+                for (byte y = 0; y < 8; y++)
+                {
+                    string piece = tiles[x, y];
+                    if (piece != null && piece[0] == 'k' && piece[1] == colour)
+                        return new byte[] { x, y };
+                }
+            return null;
+        }
+
+        public static float GetPoints(string[,] tiles, char colour)
+        {
+            float points = 0;
+            for (byte x = 0; x < 8; x++)
+                for(byte y = 0; y < 8; y++)
+                {
+                    byte yVal = (byte)(colour == 'w' ? y : 7-y);
+                    string piece = tiles[x, y];
+                    if(piece != null && piece[1] == colour)
+                        switch (piece[0])
+                        {
+                            case 'p':
+                                points += 10;
+                                points += pawnVal[x, yVal];
+                                break;
+                            case 'n':
+                                points += 30;
+                                points += knightVal[x, yVal];
+                                break;
+                            case 'b':
+                                points += 30;
+                                points += bishopVal[x, yVal];
+                                break;
+                            case 'r':
+                                points += 50;
+                                points += rookVal[x, yVal];
+                                break;
+                            case 'q':
+                                points += 100;
+                                points += queenVal[x, yVal];
+                                break;
+                            case 'k':
+                                points += 9999;
+                                points += kingVal[x, yVal];
+                                break;
+                        }
+                }
+            return points;
+        }
+
+        public static void Move(ref string[,] tiles, byte curX, byte curY, byte newX, byte newY)
+        {
+            string piece = tiles[curX, curY];
+            char colour = piece[1];
+
+            //castling
+            if(piece[0] == 'k')
+            {
+                if (tiles[curX, curY][2] == '1')
+                {
+                    tiles[curX, curY].Replace('1', '0');
+                    string rook;
+                    byte rookX;
+                    if (curX - newX == 2)
+                    {
+                        rookX = 0;
+                        rook = tiles[rookX, curY];
+                        if (rook[2] == '1')
+                        {
+                            tiles[rookX, curY].Replace('1', '0');
+                            Move(ref tiles, rookX, curY, 3, curY);
+                        }
+                    }
+                    else if (newX - curX == 2)
+                    {
+                        rookX = 7;
+                        rook = tiles[rookX, curY];
+                        if (rook[2] == '1')
+                        {
+                            tiles[rookX, curY].Replace('1', '0');
+                            Move(ref tiles, rookX, curY, 5, curY);
+                        }
+                    }
+                }
+            }
+
+            //upgrading
+            if (piece[0] == 'p' && ((colour == 'b' && newY == 7) || (colour == 'w' && newY == 0)))
+                tiles[curX, curY] = "q" + colour.ToString();
+
+            tiles[newX, newY] = tiles[curX, curY];
+            tiles[curX, curY] = null;
+        }
+    }
+
+
+
+
+
+
+
+
+public static class Piece
+    {
+        public static bool[,] GetFreeTiles(string[,] tiles, byte curX, byte curY)
+        {
+            string piece = tiles[curX, curY];
+            char colour = piece[1];
+            bool[,] freeTiles = new bool[8, 8];
+            SetFreeTilesWithoutCheck(tiles, freeTiles, curX, curY);
+            byte[] opponentKingPos = Board.GetKing(tiles, Board.SwitchColour(colour));
+
+            for (byte x = 0; x < 8; x++)
+                for (byte y = 0; y < 8; y++)
+                    //Checks if move will open attack on king.
+                    //Exception is move to opponent king, as this is checkmate.
+                    if (freeTiles[x, y] == true && !(x == opponentKingPos[0] && y == opponentKingPos[1]))
+                    {
+                        string[,] newTiles = Board.CloneTiles(tiles);
+                        Board.Move(ref newTiles, curX, curY, x, y);
+                        byte[] kingPos = Board.GetKing(newTiles, colour);
+                        string opponentPiece;
+
+                        for (byte pieceX = 0; pieceX < 8; pieceX++)
+                            for (byte pieceY = 0; pieceY < 8; pieceY++)
+                            {
+                                opponentPiece = newTiles[pieceX, pieceY];
+                                bool[,] opponentFreeTiles = new bool[8, 8];
+                                if (opponentPiece != null && opponentPiece[1] != colour)
+                                    SetFreeTilesWithoutCheck(newTiles, opponentFreeTiles, pieceX, pieceY);
+                                if (opponentFreeTiles[kingPos[0], kingPos[1]] == true)
+                                {
+                                    freeTiles[x, y] = false;
+                                    break;
+                                }
+                            }
+                    }
+            return freeTiles;
+        }
+
+        private static void SetFreeTilesWithoutCheck(string[,] tiles, bool[,] freeTiles, byte curX, byte curY)
+        {
+            string piece = tiles[curX, curY];
+            char colour = piece[1];
+            switch (piece[0])
+            {
+                case 'p':
+                    CheckPawnMoves(tiles, freeTiles, colour, curX, curY);
+                    break;
+                case 'n':
+                    CheckKnightMoves(tiles, freeTiles, colour, curX, curY);
+                    break;
+                case 'b':
+                    CheckBishopMoves(tiles, freeTiles, colour, curX, curY);
+                    break;
+                case 'r':
+                    CheckRookMoves(tiles, freeTiles, colour, curX, curY);
+                    break;
+                case 'q':
+                    CheckQueenMoves(tiles, freeTiles, colour, curX, curY);
+                    break;
+                case 'k':
+                    CheckKingMoves(tiles, freeTiles, colour, curX, curY);
+                    break;
+            }
+        }
+
+        private static void CheckPawnMoves(string[,] tiles, bool[,] freeTiles, char colour, byte curX, byte curY)
+        {
+            byte newY = (byte)(colour == 'w' ? curY - 1 : curY + 1);
+            if (newY >= 8)
+                return;
+
+            //forward
+            if (tiles[curX, newY] == null)
+            {
+                freeTiles[curX, newY] = true;
+                //double forward
+                if ((colour == 'w' && curY == 6) || (colour == 'b' && curY == 1))
+                {
+                    byte doubleY = (byte)(colour == 'w' ? 4 : 3);
+                    if (tiles[curX, doubleY] == null)
+                        freeTiles[curX, doubleY] = true;
+                }
+
+            }
+
+            //diagonal
+            string piece;
+            byte newX;
+            if (curX > 0)
+            {
+                newX = (byte)(curX - 1);
+                piece = tiles[newX, newY];
+                if (piece != null && piece[1] != colour)
+                    freeTiles[newX, newY] = true;
+            }
+            if (curX < 7)
+            {
+                newX = (byte)(curX + 1);
+                piece = tiles[newX, newY];
+                if (piece != null && piece[1] != colour)
+                    freeTiles[newX, newY] = true;
+            }
+
+            //En passant not implemented.
+        }
+        private static void CheckKnightMoves(string[,] tiles, bool[,] freeTiles, char colour, byte curX, byte curY)
+        {
+            byte newX;
+            byte newY;
+
+            //left 4 tiles
+            if (curX >= 1)
+            {
+                newX = (byte)(curX - 1);
+                if (curY >= 2)
+                {
+                    newY = (byte)(curY - 2);
+                    if (!CheckIfSameColour(tiles, colour, newX, newY))
+                        freeTiles[newX, newY] = true;
+                }
+                if (curY <= 5)
+                {
+                    newY = (byte)(curY + 2);
+                    if (!CheckIfSameColour(tiles, colour, newX, newY))
+                        freeTiles[newX, newY] = true;
+                }
+
+                if (curX >= 2)
+                {
+                    newX = (byte)(curX - 2);
+                    if (curY >= 1)
+                    {
+                        newY = (byte)(curY - 1);
+                        if (!CheckIfSameColour(tiles, colour, newX, newY))
+                            freeTiles[newX, newY] = true;
+                    }
+                    if (curY <= 6)
+                    {
+                        newY = (byte)(curY + 1);
+                        if (!CheckIfSameColour(tiles, colour, newX, newY))
+                            freeTiles[newX, newY] = true;
+                    }
+                }
+            }
+
+            //right 4 tiles
+            if (curX <= 6)
+            {
+                newX = (byte)(curX + 1);
+                if (curY >= 2)
+                {
+                    newY = (byte)(curY - 2);
+                    if (!CheckIfSameColour(tiles, colour, newX, newY))
+                        freeTiles[newX, newY] = true;
+                }
+                if (curY <= 5)
+                {
+                    newY = (byte)(curY + 2);
+                    if (!CheckIfSameColour(tiles, colour, newX, newY))
+                        freeTiles[newX, newY] = true;
+                }
+
+                if (curX <= 5)
+                {
+                    newX = (byte)(curX + 2);
+                    if (curY >= 1)
+                    {
+                        newY = (byte)(curY - 1);
+                        if (!CheckIfSameColour(tiles, colour, newX, newY))
+                            freeTiles[newX, newY] = true;
+                    }
+                    if (curY <= 6)
+                    {
+                        newY = (byte)(curY + 1);
+                        if (!CheckIfSameColour(tiles, colour, newX, newY))
+                            freeTiles[newX, newY] = true;
+                    }
+                }
+            }
+        }
+        private static void CheckBishopMoves(string[,] tiles, bool[,] freeTiles, char colour, byte curX, byte curY)
+        {
+            byte newX;
+            byte newY;
+            for (byte n = 0; n < 4; n++)
+            {
+                byte iterations = (byte)(n == 0 ? Math.Min(curX, curY) : n == 1 ? Math.Min(curX, 8 - curY) : n == 2 ? Math.Min(8 - curX, curY) : Math.Min(8 - curX, 8 - curY));
+                for (byte i = 1; i <= iterations; i++)
+                {
+                    newX = (byte)(n == 0 || n == 1 ? curX - i : curX + i);
+                    newY = (byte)(n == 0 || n == 2 ? curY - i : curY + i);
+                    if (newX >= 8 || newY >= 8)
+                        break;
+                    if (CheckIfSameColour(tiles, colour, newX, newY))
+                        break;
+                    freeTiles[newX, newY] = true;
+                    if (tiles[newX, newY] != null)
+                        break;
+                }
+            }
+        }
+        private static void CheckRookMoves(string[,] tiles, bool[,] freeTiles, char colour, byte curX, byte curY)
+        {
+            byte newX;
+            byte newY;
+            for (byte n = 0; n < 4; n++)
+            {
+                byte iterations = (byte)(n == 0 ? curX : n == 1 ? curY : n == 2 ? 8 - curX : 8 - curY);
+                for (byte i = 1; i <= iterations; i++)
+                {
+                    newX = (byte)(n == 0 ? curX - i : n == 2 ? curX + i : curX);
+                    newY = (byte)(n == 1 ? curY - i : n == 3 ? curY + i : curY);
+                    if (newX >= 8 || newY >= 8)
+                        break;
+                    if (CheckIfSameColour(tiles, colour, newX, newY))
+                        break;
+                    freeTiles[newX, newY] = true;
+                    if (tiles[newX, newY] != null)
+                        break;
+                }
+            }
+        }
+        private static void CheckQueenMoves(string[,] tiles, bool[,] freeTiles, char colour, byte curX, byte curY)
+        {
+            CheckBishopMoves(tiles, freeTiles, colour, curX, curY);
+            CheckRookMoves(tiles, freeTiles, colour, curX, curY);
+        }
+        private static void CheckKingMoves(string[,] tiles, bool[,] freeTiles, char colour, byte curX, byte curY)
+        {
+            for (byte x = (byte)Math.Max(curX - 1, 0); x <= (byte)Math.Min(curX + 1, 7); x++)
+                for (byte y = (byte)Math.Max(curY - 1, 0); y <= (byte)Math.Min(curY + 1, 7); y++)
+                    if (!CheckIfSameColour(tiles, colour, x, y))
+                        freeTiles[x, y] = true;
+            string king = tiles[curX, curY];
+
+            //Checks castling. Castling rules under check not implemented.
+            if (king[2] == '1')
+            {
+                string leftRook = tiles[0, curY];
+                string rightRook = tiles[7, curY];
+                if (leftRook != null && leftRook[0] == 'r' && leftRook[2] == '1' && tiles[curX - 1, curY] == null && tiles[curX - 2, curY] == null && tiles[curX - 3, curY] == null)
+                    freeTiles[curX - 2, curY] = true;
+                if (rightRook != null && rightRook[0] == 'r' && rightRook[2] == '1' && tiles[curX + 1, curY] == null && tiles[curX + 2, curY] == null)
+                    freeTiles[curX + 2, curY] = true;
+            }
+        }
+
+        private static bool CheckIfSameColour(string[,] tiles, char colour, byte x, byte y)
+        {
+            return tiles[x, y] != null && tiles[x, y][1] == colour;
+        }
+
+        public static bool InCheck(string[,] tiles, char colour)
+        {
+            byte[] kingPos = Board.GetKing(tiles, colour);
+            for (byte x = 0; x < 8; x++)
+                for (byte y = 0; y < 8; y++)
+                {
+                    bool[,] freeTiles = new bool[8, 8];
+                    string opponentPiece = tiles[x, y];
+                    if (opponentPiece != null && opponentPiece[1] != colour)
+                    {
+                        SetFreeTilesWithoutCheck(tiles, freeTiles, x, y);
+                        if (freeTiles[kingPos[0], kingPos[1]] == true)
+                            return true;
+                    }
+                }
+            return false;
+        }
+
+        public static Image GetIcon(string piece, int tileWidth, int tileHeight)
+        {
+            if (piece == null)
+                return null;
+            Image sprite = new Bitmap(@"Pieces\" + piece[0].ToString() + piece[1].ToString() + ".png");
+            return new Bitmap(sprite, new Size(tileWidth, tileHeight));
+        }
+    }
+
+
+
+
+
+
+
+
+
+  struct Node
+    {
+        public string[,] tiles;
+        public byte[] move;
+        public float points;
+        public Node(string[,] tiles, byte[] move)
+        {
+            this.tiles = tiles;
+            this.move = move;
+            points = 0;
+        }
+    }
+    public static class AI
+    {
+        public static byte[] GetMove(string[,] tiles, char aiColour, byte depth)
+        {
+            List<Node> childNodes = GetChildNodes(new Node(tiles, null), aiColour);
+            float[] points = new float[childNodes.Count];
+            List<Thread> threads = new List<Thread>();
+
+            //threads all possible first moves
+            foreach (Node node in childNodes)
+            {
+                Thread thread = new Thread(() => SetPointsThread(points, childNodes.IndexOf(node), node, aiColour, depth));
+                threads.Add(thread);
+                thread.Start();
+            }
+
+            foreach (Thread thread in threads)
+                thread.Join();
+
+            for (int i = 0; i < childNodes.Count; i++)
+            {
+                Node newNode = new Node(childNodes[i].tiles, childNodes[i].move);
+                newNode.points = points[i];
+                childNodes[i] = newNode;
+            }
+
+            childNodes = GetBestNodes(childNodes);
+            if (childNodes.Count == 0)
+                return null;
+            return childNodes[0].move;
+        }
+
+        private static void SetPointsThread(float[] points, int index, Node node, char aiColour, byte depth)
+        {
+            points[index] = SetPoints(node, aiColour, 1, depth);
+        }
+
+        /// <summary>
+        /// Recursive minimax algorithm that calculates points of all possible moves
+        /// and gets best case scenario. Can be made more efficient with alpha-beta pruning.
+        /// </summary>
+        /// <param name="node"></param>
+        /// <param name="aiColour"></param>
+        /// <param name="curDepth"></param>
+        /// <param name="depth"></param>
+        /// <returns></returns>
+        private static float SetPoints(Node node, char aiColour, byte curDepth, byte depth)
+        {
+            char colour = curDepth % 2 == 1 ? aiColour : Board.SwitchColour(aiColour);
+            if (curDepth == depth)
+                return Board.GetPoints(node.tiles, aiColour) - Board.GetPoints(node.tiles, Board.SwitchColour(aiColour));
+
+            List<Node> childNodes = GetChildNodes(node, Board.SwitchColour(colour));
+
+            for(int i = 0; i < childNodes.Count; i++)
+            {
+                Node newNode = new Node(childNodes[i].tiles, childNodes[i].move);
+                newNode.points = SetPoints(newNode, aiColour, (byte)(curDepth + 1), depth);
+                childNodes[i] = newNode;
+            }
+
+            if (colour != aiColour)
+                childNodes = GetBestNodes(childNodes);
+            else
+                childNodes = GetWorstNodes(childNodes);
+
+            return childNodes[0].points;
+        }
+
+        private static List<Node> GetChildNodes(Node node, char colour)
+        {
+            List<Node> childNodes = new List<Node>();
+            string[,] tiles = node.tiles;
+            if (Board.GetKing(tiles, colour) != null && Board.GetKing(tiles, Board.SwitchColour(colour)) != null)
+            {
+                bool canMove = false;
+                for (byte x = 0; x < 8; x++)
+                    for (byte y = 0; y < 8; y++)
+                    {
+                        string piece = tiles[x, y];
+                        if (piece != null && piece[1] == colour)
+                        {
+                            bool[,] freeTiles = Piece.GetFreeTiles(tiles, x, y);
+                            for (byte xTile = 0; xTile < 8; xTile++)
+                                for (byte yTile = 0; yTile < 8; yTile++)
+                                    if (freeTiles[xTile, yTile])
+                                    {
+                                        canMove = true;
+                                        string[,] newTiles = Board.CloneTiles(tiles);
+                                        Board.Move(ref newTiles, x, y, xTile, yTile);
+                                        Node newNode = new Node(newTiles, new byte[] { x, y, xTile, yTile });
+
+                                        childNodes.Add(newNode);
+                                    }
+
+                        }
+                    }
+                //draw
+                if (!canMove)
+                {
+                    node.points = 0;
+                    return new List<Node>() { node };
+                }
+            }
+            else
+                //checkmate
+                return new List<Node>() { node };
+            return childNodes;
+        }
+        private static List<Node> GetBestNodes(List<Node> nodes)
+        {
+            List<Node> bestNodes = new List<Node>();
+            float mostPoints = -9999999;
+            foreach (Node node in nodes)
+            {
+                float points = node.points;
+                if (points > mostPoints)
+                {
+                    bestNodes.Clear();
+                    mostPoints = points;
+                }
+                if(points == mostPoints)
+                    bestNodes.Add(node);
+            }
+            return bestNodes;
+        }
+
+        private static List<Node> GetWorstNodes(List<Node> nodes)
+        {
+            List<Node> worstNodes = new List<Node>();
+            float leastPoints = 9999999;
+            foreach (Node node in nodes)
+            {
+                float points = node.points;
+                if (points < leastPoints)
+                {
+                    worstNodes.Clear();
+                    leastPoints = points;
+                }
+                if (points == leastPoints)
+                    worstNodes.Add(node);
+            }
+            return worstNodes;
+        }
+    }
+}
