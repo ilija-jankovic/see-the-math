@@ -1,0 +1,431 @@
+#include <iostream>
+#include <windows.h>
+#include <string>
+#include <conio.h>
+#include <list>
+
+char* DISPLAY;
+int DISPLAY_WIDTH, DISPLAY_HEIGHT;
+bool FILL_MODE = false;
+
+float fov = 3.141/2;
+
+char CHAR_BRIGHT = '@';
+char CHAR_LIT = 'O';
+char CHAR_SLIGHTLY_LIT = '+';
+char CHAR_NORMAL = '*';
+char CHAR_DIM = '.';
+char CHAR_EMPTY = ' ';
+
+struct vec2d {
+	int x, y;
+};
+
+struct vec3d {
+	float x, y, z, w = 1;
+};
+
+struct tri {
+	vec3d v[3];
+};
+
+struct mesh {
+	std::list<tri> tris;
+};
+
+struct mat4x4 {
+	float p[4][4];
+};
+
+vec3d normalise(vec3d v) {
+	float d = max(v.x, v.y, v.z);
+	if (d != 0)
+		return vec3d{ v.x / d,v.y / d,v.z / d,v.w };
+	else
+		return v;
+}
+
+float cross(vec2d v1, vec2d v2) {
+	return v1.x * v2.y - v1.y * v2.x;
+}
+
+vec3d cross(vec3d v1, vec3d v2) {
+	return vec3d{ v1.y * v2.z - (v1.z * v2.y), v1.z * v2.x - (v1.x * v2.z), v1.x * v2.y - (v1.y * v2.x) };
+}
+
+float dot(vec3d v1, vec3d v2) {
+	return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+}
+
+vec3d add(vec3d v1, vec3d v2) {
+	return vec3d{ v1.x + v2.x, v1.y + v2.y, v1.z + v2.z };
+}
+
+vec3d sub(vec3d v1, vec3d v2) {
+	return vec3d{ v1.x - v2.x, v1.y - v2.y, v1.z - v2.z };
+}
+
+vec3d multMatrixVector(mat4x4 mat, vec3d v) {
+	return vec3d{ mat.p[0][0] * v.x + mat.p[0][1] * v.y + mat.p[0][2] * v.z + mat.p[0][3] * v.w,
+				  mat.p[1][0] * v.x + mat.p[1][1] * v.y + mat.p[1][2] * v.z + mat.p[1][3] * v.w,
+				  mat.p[2][0] * v.x + mat.p[2][1] * v.y + mat.p[2][2] * v.z + mat.p[2][3] * v.w,
+	              mat.p[3][0] * v.x + mat.p[3][1] * v.y + mat.p[3][2] * v.z + mat.p[3][3] * v.w };
+}
+
+vec3d org { 0,0,1 };
+
+vec3d moveToOrigin(vec3d v) {
+	return sub(v,org);
+}
+
+vec3d moveBackFromOrigin(vec3d v) {
+	return add(v,org);
+}
+
+vec3d rotX(vec3d v, float angle) {
+	v = moveToOrigin(v);
+	mat4x4 mat{ 0 };
+	mat.p[0][0] = 1;
+	mat.p[1][1] = cos(angle);
+	mat.p[1][2] = -sin(angle);
+	mat.p[2][1] = sin(angle);
+	mat.p[2][2] = cos(angle);
+	v = multMatrixVector(mat, v);
+	return 	v = moveBackFromOrigin(v);
+}
+
+vec3d rotY(vec3d v, float angle) {
+	mat4x4 mat{ 0 };
+	v = moveToOrigin(v);
+	mat.p[0][0] = cos(angle);
+	mat.p[0][2] = sin(angle);
+	mat.p[1][1] = 1;
+	mat.p[2][0] = -sin(angle);
+	mat.p[2][2] = cos(angle);
+	v= multMatrixVector(mat, v);
+	return 	v = moveBackFromOrigin(v);
+}
+
+vec3d rotZ(vec3d v, float angle) {
+	mat4x4 mat{ 0 };
+	v = moveToOrigin(v);
+	mat.p[0][0] = cos(angle);
+	mat.p[0][1] = -sin(angle);
+	mat.p[1][0] = sin(angle);
+	mat.p[1][1] = cos(angle);
+	mat.p[2][2] = 1;
+	v = multMatrixVector(mat, v);
+	return 	v = moveBackFromOrigin(v);
+}
+
+//projection matrix
+vec3d project(vec3d v) {
+	float zFar = 10.0;
+	float zNear = 1;
+
+	mat4x4 mat{ 0 };
+	float aspRatio = (float)DISPLAY_HEIGHT*3 / DISPLAY_WIDTH;
+	float f = 1 / tan(fov / 2.0);
+	float q = zFar / (zFar - zNear);
+	mat.p[0][0] = aspRatio * f;
+	mat.p[1][1] = f;
+	mat.p[2][2] = q;
+	mat.p[2][3] = 1.0;
+	mat.p[3][2] = -zNear * q;
+
+	vec3d vNew =  multMatrixVector(mat, v);
+	if (vNew.z != 0) {
+		vNew.x /= vNew.z;
+		vNew.y /= vNew.z;
+	}
+	return vNew;
+}
+
+char charBrightness(float intensity) {
+	if (intensity > 0.75)
+		return CHAR_BRIGHT;
+	if (intensity > 0.65)
+		return CHAR_LIT;
+	if (intensity > 0.5)
+		return CHAR_SLIGHTLY_LIT;
+	if (intensity > 0.25)
+		return CHAR_NORMAL;
+	return CHAR_DIM;
+}
+
+void insertChar(int x, int y, char sym) {
+	if (x >= 0 && x < DISPLAY_WIDTH && y >= 0 && y < DISPLAY_HEIGHT)
+		DISPLAY[y * DISPLAY_WIDTH + x] = sym;
+}
+
+void insertChar(int i, char sym) {
+	if (i >= 0 && i < DISPLAY_WIDTH*DISPLAY_HEIGHT)
+		DISPLAY[i] = sym;
+}
+
+
+void line(int x1, int y1, int x2, int y2, char sym) {
+	int xDiff = x1 - x2;
+	int xAbsDiff = abs(xDiff);
+	int yDiff = y1 - y2;
+	int yAbsDiff = abs(yDiff);
+
+	int xMin = xDiff <= 0 ? x1 : x2;
+	int xMax = xMin == x1 ? x2 : x1;
+	int yMin = yDiff <= 0 ? y1 : y2;
+	int yMax = yMin == y1 ? y2 : y1;
+
+	if (xAbsDiff >= yAbsDiff) {
+		for (int x = xMin; x <= min(xMax,DISPLAY_WIDTH-1); x++) { 
+			int dist = round(((float)(x - xMin) / xAbsDiff) * yAbsDiff);
+			int y;
+			if ((xMin == x1 && yMin == y1) || (xMin == x2 && yMin == y2))
+				y = yMin + dist;
+			else
+				y = yMax - dist;
+			insertChar(x, y, sym);
+		}
+	}
+	else {
+		for (int y = yMin; y <= min(yMax, DISPLAY_HEIGHT - 1); y++) {
+			int dist = round(((float)(y - yMin) / yAbsDiff) * xAbsDiff);
+			int x;
+			if ((xMin == x1 && yMin == y1) || (xMin == x2 && yMin == y2))
+				x = xMin + dist;
+			else
+				x = xMax - dist;
+			insertChar(x, y, sym);
+		}
+	}
+}
+
+void triangle(int x1, int y1, int x2, int y2, int x3, int y3, char sym) {
+	if (!FILL_MODE) {
+		line(x1, y1, x2, y2, sym);
+		line(x2, y2, x3, y3, sym);
+		line(x3, y3, x1, y1, sym);
+		return;
+	}
+
+	//Barycentric Algorithm
+	vec2d v1{ x2 - x1,y2 - y1 };
+	vec2d v2{ x3 - x1,y3 - y1 };
+
+	int xMin = min(x1, min(x2, x3));
+	int xMax = max(x1, max(x2, x3));
+	int yMin = min(y1, min(y2, y3));
+	int yMax = max(y1, max(y2, y3));
+
+	for(int x = xMin; x <= xMax; x++)
+		for (int y = yMin; y <= yMax; y++) {
+			vec2d q{ x - x1, y - y1 };
+
+			float crossDiv = cross(v1, v2);
+			float s = cross(q, v2) / crossDiv;
+			float t = cross(v1, q) / crossDiv;
+
+			if ((s >= 0) && (t >= 0) && (s + t <= 1))
+				insertChar(x, y, sym);
+		}
+}
+
+std::list<mesh> meshes;
+
+mesh box(vec3d v, int width, int height, int depth) {
+	std::list<tri> tris;
+	//front
+	vec3d v1{ v.x,v.y,v.z };
+	vec3d v2{ v.x,v.y + height,v.z };
+	vec3d v3{ v.x + width,v.y,v.z };
+	tris.push_back(tri{ v1,v2,v3 });
+	vec3d v4{ v.x,v.y + height,v.z };
+	vec3d v5{ v.x + width,v.y + height,v.z };
+	vec3d v6{ v.x + width,v.y,v.z };
+	tris.push_back(tri{ v4,v5,v6 });
+
+	//right
+	vec3d v7{ v.x + width,v.y,v.z };
+	vec3d v8{ v.x + width,v.y + height,v.z };
+	vec3d v9{ v.x + width,v.y,v.z + depth };
+	tris.push_back(tri{ v7,v8,v9 });
+	vec3d v10{ v.x + width,v.y,v.z + depth };
+	vec3d v11{ v.x + width,v.y + height,v.z };
+	vec3d v12{ v.x + width,v.y + height,v.z + depth };
+	tris.push_back(tri{ v10,v11,v12 });
+
+	//top
+	vec3d v13{ v.x + width,v.y + height,v.z };
+	vec3d v14{ v.x,v.y + height,v.z + depth };
+	vec3d v15{ v.x + width,v.y + height,v.z + depth };
+	tris.push_back(tri{ v13,v14,v15 });
+	vec3d v16{ v.x + width,v.y + height,v.z };
+	vec3d v17{ v.x,v.y + height,v.z };
+	vec3d v18{ v.x,v.y + height,v.z + depth };
+	tris.push_back(tri{ v16,v17,v18 });
+
+	//bottom
+	vec3d v19{ v.x,v.y,v.z + depth };
+	vec3d v20{ v.x,v.y,v.z };
+	vec3d v21{ v.x + width,v.y,v.z + depth };
+	tris.push_back(tri{ v19,v20,v21 });
+	vec3d v22{ v.x + width,v.y,v.z + depth };
+	vec3d v23{ v.x,v.y,v.z };
+	vec3d v24{ v.x + width,v.y,v.z };
+	tris.push_back(tri{ v22,v23,v24 });
+
+	//back
+	vec3d v25{ v.x + width,v.y,v.z + depth };
+	vec3d v26{ v.x + width,v.y + height,v.z + depth };
+	vec3d v27{ v.x,v.y,v.z + depth };
+	tris.push_back(tri{ v25,v26,v27 });
+	vec3d v28{ v.x,v.y,v.z + depth };
+	vec3d v29{ v.x + width,v.y + height,v.z + depth };
+	vec3d v30{ v.x,v.y + height,v.z + depth };
+	tris.push_back(tri{ v28,v29,v30 });
+
+	//left
+	vec3d v31{ v.x,v.y,v.z + depth };
+	vec3d v32{ v.x,v.y + height,v.z + depth };
+	vec3d v33{ v.x,v.y,v.z };
+	tris.push_back(tri{ v31,v32,v33 });
+	vec3d v34{ v.x,v.y,v.z };
+	vec3d v35{ v.x,v.y + height,v.z + depth };
+	vec3d v36{ v.x,v.y + height,v.z };
+	tris.push_back(tri{ v34,v35,v36 });
+
+	mesh mesh{ tris };
+	meshes.push_back(mesh);
+	return mesh;
+}
+
+mesh cube(vec3d v, float size) {
+	return box(v, size, size, size);
+}
+
+void clearDisplay() {
+
+	COORD topLeft = { 0, 0 };
+	HANDLE console = GetStdHandle(STD_OUTPUT_HANDLE);
+	CONSOLE_SCREEN_BUFFER_INFO screen;
+	DWORD written;
+
+	GetConsoleScreenBufferInfo(console, &screen);
+	FillConsoleOutputCharacterA(
+		console, ' ', screen.dwSize.X * screen.dwSize.Y, topLeft, &written
+	);
+	FillConsoleOutputAttribute(
+		console, FOREGROUND_GREEN | FOREGROUND_RED | FOREGROUND_BLUE,
+		screen.dwSize.X * screen.dwSize.Y, topLeft, &written
+	);
+	SetConsoleCursorPosition(console, topLeft);
+
+
+	for (int y = 0; y < DISPLAY_HEIGHT; y++)
+		for (int x = 0; x < DISPLAY_WIDTH; x++)
+			insertChar(x, y, CHAR_EMPTY);
+}
+
+void drawDisplay() {
+	std::string sdisplay;
+	for (int y = 0; y < DISPLAY_HEIGHT-1; y++)
+		for (int x = 0; x < DISPLAY_WIDTH; x++)
+			sdisplay += DISPLAY[y* DISPLAY_WIDTH + x];
+	std::cout << sdisplay << std::flush;
+}
+
+void insertString(std::string text, int start) {
+	for (int i = start; i < min(start+text.length(), DISPLAY_WIDTH*DISPLAY_HEIGHT); i++)
+		insertChar(i, text.at(i-start));
+}
+
+int main() {
+	HWND console = GetConsoleWindow();
+	RECT ConsoleRect;
+	GetWindowRect(console, &ConsoleRect);
+	MoveWindow(console, ConsoleRect.left, ConsoleRect.top, 800, 600, TRUE);
+
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+
+	DISPLAY_WIDTH = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+	DISPLAY_HEIGHT = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+
+	DISPLAY = new char[DISPLAY_HEIGHT * DISPLAY_WIDTH];
+
+	int xMid = DISPLAY_WIDTH / 2;
+	int yMid = DISPLAY_HEIGHT / 2;
+	float scl = 20;
+
+	float xAngle = 0;
+	float yAngle = 0;
+	float zAngle = 0;
+
+	cube(vec3d{ -0.5f,-0.5f,-0.5f }, 1);
+
+	while (1) {
+		clearDisplay();
+		
+		for (const mesh& mesh : meshes)
+			for (const tri& tri : mesh.tris)
+			{
+				vec3d v1 = rotZ(rotX(rotY(tri.v[0], yAngle), xAngle), zAngle);
+				vec3d v2 = rotZ(rotX(rotY(tri.v[1], yAngle), xAngle), zAngle);
+				vec3d v3 = rotZ(rotX(rotY(tri.v[2], yAngle), xAngle), zAngle);
+
+				v1 = project(v1);
+				v2 = project(v2);
+				v3 = project(v3);
+
+				//note y direction is flipped
+				float dotProd = dot(cross(sub(v2, v1), sub(v3, v2)), vec3d{ 0,0,2 });
+				if (dotProd <= 0) {
+
+					triangle(round(scl * (v1.x - 0.5)) + xMid,
+						round(scl * (v1.y - 0.5)) + yMid,
+						round(scl * (v2.x - 0.5)) + xMid,
+						round(scl * (v2.y - 0.5)) + yMid,
+						round(scl * (v3.x - 0.5)) + xMid,
+						round(scl * (v3.y - 0.5)) + yMid,
+						charBrightness(-dotProd));
+				}
+			}
+
+		insertString("W/S - rotate around X axis", 0);
+		insertString("A/D - rotate around Y axis", DISPLAY_WIDTH);
+		insertString("Q/E - rotate around Z axis", DISPLAY_WIDTH*2);
+		insertString("-/+ - zoom", DISPLAY_WIDTH * 3);
+		insertString("F - toggle fill", DISPLAY_WIDTH * 4);
+
+		drawDisplay();
+		
+		switch (_getch()) {
+		case 'a':
+			yAngle -= 0.1;
+			break;
+		case 'd':
+			yAngle += 0.1;
+			break;
+		case 'w':
+			xAngle -= 0.1;
+			break;
+		case 's':
+			xAngle += 0.1;
+			break;
+		case 'q':
+			zAngle -= 0.1;
+			break;
+		case 'e':
+			zAngle += 0.1;
+			break;
+		case '-':
+			fov += 0.1;
+			break;
+		case '=':
+			fov -= 0.1;
+			break;
+		case 'f':
+			FILL_MODE = !FILL_MODE;
+			break;
+		}
+	}
+}
