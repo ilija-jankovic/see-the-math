@@ -1,2 +1,1 @@
-This is a repository for all the different algorithms I've created
-which are represented graphically.
+All the different algorithms I've created and played around with.
